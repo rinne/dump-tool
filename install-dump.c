@@ -73,6 +73,18 @@ int main(int argc, char **argv) {
     exit(1);
   }
 
+  /* Read and check magic */
+  if (r(0, buf, 8) != 8) {
+    dprintf(2, "Read error (magic)\n");
+    fsync(2);
+    exit(1);
+  } 
+  if (d64(buf) != DUMP_FILE_MAGIC) {
+    dprintf(2, "Bad magic\n");
+    fsync(2);
+    exit(1);
+  }
+
   /* Open output */
   fd = open(fn, O_WRONLY | /*O_SYNC |*/ O_NOFOLLOW, 0);
   if (fd < 0) {

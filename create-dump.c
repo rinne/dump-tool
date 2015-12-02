@@ -106,6 +106,14 @@ int main(int argc, char **argv) {
     exit(1);
   }
 
+  /* Write magic */
+  e64(buf, DUMP_FILE_MAGIC);
+  if (w(fd2, buf, 8) != 8) {
+    dprintf(2, "Write error\n");
+    fsync(2);
+    exit(1);
+  }
+
   /* Main loop */
   block = nblocks;
   do {
