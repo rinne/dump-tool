@@ -17,10 +17,13 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <getopt.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 
 #include "common.h"
+
+const char *av0 = NULL;
 
 int main(int argc, char **argv) {
   int restart = 0;
@@ -29,21 +32,55 @@ int main(int argc, char **argv) {
   int fd;
   char *buf = NULL;
   uint64_t nblocks = 0, nbytes = 0;
+  const char *hlp;
+  dump_stump_t stump = NULL, tstump = NULL;
+  double t0, t1;
+  int c;
 
   (void)ts();
 
   /* Arguments */
-  if ((argc == 3) && (strcmp(argv[1], "-r") == 0) && (*(argv[2]) != '-')) {
-    restart = 1;
-    fn = argv[2];
-  } else if ((argc == 2) && (*(argv[1]) != '-')) {
-    restart = 0;
-    fn = argv[1];
+  hlp = strrchr(argv[0], '/');
+  if (hlp == NULL)
+    av0 = argv[0];
+  else
+    av0 = hlp + 1;
+  opterr = 0;
+  while ((c = getopt(argc, argv, "+rS:")) > 0) {
+      switch (c) {
+      case 'r':
+	restart = 1;
+	break;
+      case 'S':
+	tstump = dump_stump_parse(optarg);
+	if (tstump == NULL) {
+	  dprintf(2, "%s: Invalid stump spec in option '%c'. Must be <offset>:<string>\n", av0, optopt);
+	  dprintf(2, "Usage: %s [ -r ] <destination device or file>\n", av0);
+	  fsync(2);
+	  exit(1);
+	}
+	tstump->next = stump;
+	stump = tstump;
+	tstump = NULL;
+	break;
+      default:
+	dprintf(2, "%s: Invalid option '%c'.\n", av0, optopt);
+	dprintf(2, "Usage: %s [ -r ] <destination device or file>\n", av0);
+	fsync(2);
+	exit(1);
+      }
+  }
+  argc -= optind;
+  argv += optind;
+
+  if (argc == 1) {
+    fn = argv[0];
   } else {
-    dprintf(2, "Usage: install-dump [ -r ] <destination device or file>\n");
+    dprintf(2, "Usage: %s [ -r ] <destination device or file>\n", av0);
     fsync(2);
     exit(1);
   }
+
   if (lstat(fn, &st) != 0) {
     dprintf(2, "Can't stat destination \"%s\"\n", fn);
     fsync(2);
@@ -96,7 +133,6 @@ int main(int argc, char **argv) {
   /* Main loop */
   while (1) {
     uint64_t off, len;
-    double t0, t1;
     if (r(0, buf, 16) != 16) {
       dprintf(2, "Read error (header)\n");
       fsync(2);
@@ -145,6 +181,30 @@ int main(int argc, char **argv) {
     fsync(1);
   }
 
+  /* Write stumps. */
+  if (stump != NULL) {
+    for (tstump = stump; tstump != NULL; tstump = tstump->next) {
+      t0 = ts();
+      if (lseek(fd, (off_t)tstump->o, SEEK_SET) != (off_t)tstump->o) {
+	dprintf(2, "Can't seek output\n");
+	fsync(2);
+	exit(1);
+      }
+      if (w(fd, tstump->s, tstump->l) != tstump->l) {
+	dprintf(2, "Write error\n");
+	fsync(2);
+	exit(1);
+      }
+      t1 = ts();
+      dprintf(1, "stump ok in %.6fs\n", t1 - t0);
+      fsync(1);
+    }
+    if (stump != NULL) {
+      dprintf(1, "End of stumps reached.\n");
+      fsync(1);
+    }
+  }
+
   /* Sync output */
   if (fsync(fd) != 0) {
     dprintf(2, "Destination sync failed\n");
@@ -166,6 +226,12 @@ int main(int argc, char **argv) {
   /* Cleanup */
   free(buf);
   buf = NULL;
+  while (stump != NULL) {
+    tstump = stump;
+    stump = tstump->next;
+    free(tstump->s);
+    free(tstump);
+  }
 
   /* Immediate reboot */
   if (restart) {

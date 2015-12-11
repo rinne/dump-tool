@@ -96,6 +96,52 @@ double ts() {
   return t1 - t0;
 }
 
+dump_stump_t dump_stump_parse(const char *x) {
+  char *hlp;
+  uint64_t o;
+  char *s = NULL;
+  char buf[64];
+  dump_stump_t r = NULL;
+
+  hlp = strrchr(x, ':');
+  if (hlp == NULL) {
+    goto error;
+  }
+  if (*(hlp + 1) == '\0') {
+    goto error;
+  }
+  s = strdup(hlp + 1);
+  if (s == NULL) {
+    goto error;
+  }
+  o = (uint64_t)strtoul(x, &hlp, 0);
+  if (*hlp != ':') {
+    goto error;
+  }
+  if (snprintf(buf, sizeof (buf), "%lu:", (unsigned long)o) >= sizeof(buf)) {
+    goto error;
+  }
+  if (strncmp(buf, x, strlen(buf)) != 0) {
+    goto error;
+  }
+  r = calloc(1, sizeof (*r));
+  r->s = s;
+  r->l = ((uint64_t)(strlen(r->s))) + 1; /* Also trailing NUL is included in length. */
+  r->o = o;
+  return r;
+ error:
+  if (s != NULL) {
+    free(s);
+  }
+  if (r != NULL) {
+    if (r->s != NULL) {
+      free(r->s);
+    }
+    free(r);
+  }
+  return NULL;
+}
+
 void REBOOT_NOW() {
 #ifdef USE_GLIB_REBOOT
   reboot(RB_AUTOBOOT);

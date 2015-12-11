@@ -17,10 +17,13 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <getopt.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 
 #include "common.h"
+
+const char *av0 = NULL;
 
 int main(int argc, char **argv) {
   const char *fn = NULL, *fn2 = NULL;
@@ -28,18 +31,51 @@ int main(int argc, char **argv) {
   int fd, fd2;
   char *buf = NULL;
   uint64_t srcsize = 0, nblocks = 0, block = 0, nbytes = 0;
+  const char *hlp;
+  dump_stump_t stump = NULL, tstump = NULL;
+  double t0, t1;
+  int c;
 
   (void)ts();
 
   /* Arguments */
-  if ((argc == 3) && (*(argv[1]) != '-') && (*(argv[2]) != '-')) {
-    fn = argv[1];
-    fn2 = argv[2];
+  hlp = strrchr(argv[0], '/');
+  if (hlp == NULL)
+    av0 = argv[0];
+  else
+    av0 = hlp + 1;
+  opterr = 0;
+  while ((c = getopt(argc, argv, "+S:")) > 0) {
+      switch (c) {
+      case 'S':
+	tstump = dump_stump_parse(optarg);
+	if (tstump == NULL) {
+	  dprintf(2, "%s: Invalid stump spec in option '%c'. Must be <offset>:<string>\n", av0, optopt);
+	  dprintf(2, "Usage: %s <source device or file> <destination-file>\n", av0);
+	  fsync(2);
+	  exit(1);
+	}
+	tstump->next = stump;
+	stump = tstump;
+	tstump = NULL;
+	break;
+      default:
+	dprintf(2, "%s: Invalid option '%c'.\n", av0, optopt);
+	dprintf(2, "Usage: %s <source device or file> <destination-file>\n", av0);
+	fsync(2);
+	exit(1);
+      }
+  }
+  argc -= optind;
+  argv += optind;
+  if (argc == 2) {
+    fn = argv[0];
+    fn2 = argv[1];
   } else {
-    dprintf(2, "Usage: create-dumper <source device or file> <destination-file>\n");
+    dprintf(2, "Usage: %s <source device or file> <destination-file>\n", av0);
     fsync(2);
     exit(1);
-  }
+ }
   if (lstat(fn, &st) != 0) {
     dprintf(2, "Can't stat source \"%s\"\n", fn);
     fsync(2);
@@ -118,7 +154,6 @@ int main(int argc, char **argv) {
   block = nblocks;
   do {
     uint64_t off, len;
-    double t0, t1;
     block--;
     off = block * FBLOCK_LEN;
     len = (off + FBLOCK_LEN) <= srcsize ? FBLOCK_LEN : srcsize - off;
@@ -163,6 +198,42 @@ int main(int argc, char **argv) {
     dprintf(1, "\nblock time %.6fs\n", t1 - t0);
     fsync(1);
   } while (block > 0);
+
+  dprintf(1, "Input chunks written.\n");
+  fsync(1);
+
+  /* Write stumps. */
+  if (stump != NULL) {
+    dprintf(1, "Writing stumps.\n");
+    fsync(1);
+    for (tstump = stump; tstump != NULL; tstump = tstump->next) {
+      t0 = ts();
+      e64(buf, tstump->o);
+      e64(buf + 8, tstump->l);
+      if (w(fd2, buf, 16) != 16) {
+	dprintf(2, "Write error\n");
+	fsync(2);
+	exit(1);
+      }
+      if (tstump->o != (off_t)tstump->o) {
+	dprintf(2, "Bad offset\n");
+	fsync(2);
+	exit(1);
+      }
+      if (w(fd2, tstump->s, tstump->l) != tstump->l) {
+	dprintf(2, "Write error\n");
+	fsync(2);
+	exit(1);
+      }
+      t1 = ts();
+      dprintf(1, "stump time %.6fs\n", t1 - t0);
+      fsync(1);
+    }
+    dprintf(1, "End of stumps reached.\n");
+    fsync(1);
+  }
+
+  /* End marker */
   e64(buf, 0);
   e64(buf + 8, 0);
   if (w(fd2, buf, 16) != 16) {
@@ -170,8 +241,6 @@ int main(int argc, char **argv) {
     fsync(2);
     exit(1);
   }
-  write(1, "eof\n", 4);
-  fsync(1);
 
   /* Close files */
   if (close(fd) != 0) {
@@ -188,6 +257,12 @@ int main(int argc, char **argv) {
   /* Cleanup */
   free(buf);
   buf = NULL;
+  while (stump != NULL) {
+    tstump = stump;
+    stump = tstump->next;
+    free(tstump->s);
+    free(tstump);
+  }
 
   /* Final report */
   dprintf(1, "Written %lu blocks, %lu bytes total.\n", (unsigned long)nblocks, (unsigned long)nbytes);
