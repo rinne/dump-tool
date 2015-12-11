@@ -96,6 +96,28 @@ double ts() {
   return t1 - t0;
 }
 
+
+uint64_t offset_parse(const char *x) {
+  char *hlp;
+  uint64_t o;
+  char buf[64];
+
+  o = (uint64_t)strtoul(x, &hlp, 0);
+  if (*hlp != '\0') {
+    return DUMP_INVALID_OFFSET;
+  }
+  if (snprintf(buf, sizeof (buf), "%lu", (unsigned long)o) >= sizeof(buf)) {
+    return DUMP_INVALID_OFFSET;
+  }
+  if (strcmp(buf, x) != 0) {
+    return DUMP_INVALID_OFFSET;
+  }
+  if (o != ((off_t)o)) {
+    return DUMP_INVALID_OFFSET;
+  }
+  return o;
+}
+
 dump_stump_t dump_stump_parse(const char *x) {
   char *hlp;
   uint64_t o;
@@ -122,6 +144,9 @@ dump_stump_t dump_stump_parse(const char *x) {
     goto error;
   }
   if (strncmp(buf, x, strlen(buf)) != 0) {
+    goto error;
+  }
+  if (o != ((off_t)o)) {
     goto error;
   }
   r = calloc(1, sizeof (*r));

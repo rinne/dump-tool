@@ -13,11 +13,13 @@
 CFLAGS += -O6 -Wall
 LDFLAGS += -static
 
-all: create-dump install-dump
+all: create-dump install-dump peek-string
 
 clean:
-	rm -f create-dump install-dump *.o
+	rm -f create-dump install-dump peek-string *.o
 
 create-dump: create-dump.o common.o
 
 install-dump: install-dump.o common.o
+
+peek-string: peek-string.o common.o

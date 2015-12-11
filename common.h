@@ -18,6 +18,8 @@
 
 #define DUMP_FILE_MAGIC 0xfd54522d64756d70ull
 
+#define DUMP_INVALID_OFFSET ((uint64_t)-1)
+
 typedef struct dump_stump_rec dump_stump_struct;
 typedef struct dump_stump_rec *dump_stump_t;
 
@@ -33,5 +35,6 @@ ssize_t w(int fd, const void *buf, size_t count);
 uint64_t d64(const void *buf);
 void e64(void *buf, uint64_t x);
 double ts(void);
+uint64_t offset_parse(const char *x);
 dump_stump_t dump_stump_parse(const char *x);
 void REBOOT_NOW(void);
