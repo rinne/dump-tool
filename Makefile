@@ -10,7 +10,7 @@
 #  published by the Free Software Foundation.
 #
 
-CFLAGS += -O6 -Wall
+CFLAGS += -O6 -Wall -g
 LDFLAGS += -static
 
 all: create-dump install-dump peek-string

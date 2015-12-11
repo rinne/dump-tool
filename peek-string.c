@@ -20,6 +20,8 @@
 #include <getopt.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/ioctl.h>
+#include <linux/fs.h>
 
 #include "common.h"
 
@@ -88,25 +90,26 @@ int main(int argc, char **argv) {
     exit(1);
   }
 
-  /* Input type check */
+  /* Input type check and check */
   if (S_ISREG(st.st_mode)) {
-    /*NOTHING*/;
+    srcsize = st.st_size;
   } else if (S_ISCHR(st.st_mode)) {
-    /*NOTHING*/;
+    srcsize = st.st_size;
   } else if (S_ISBLK(st.st_mode)) {
-    /*NOTHING*/;
+    if (((fd = open(fn, O_RDONLY | O_NOFOLLOW, 0)) < 0) || (ioctl(fd, BLKGETSIZE64, &srcsize) != 0) || (close(fd) != 0)) {
+      dprintf(2, "Can't get size of the block device \"%s\"\n", fn);
+      fsync(2);
+      exit(1);
+    }
   } else {
     dprintf(2, "Input \"%s\" is not regular file or device node\n", fn);
     fsync(2);
     exit(1);
   }
-
-  /* Size */
-  srcsize = st.st_size;
-  fsync(1);
   if (off >= srcsize) {
-    dprintf(2, "Offset is beyond the size of the source file.\n");
+    dprintf(2, "Offset (%lu) is beyond the size of the source file (%lu).\n", (unsigned long)off, (unsigned long)srcsize);
     fsync(2);
+    exit(1);
   }
   if ((off + len) > srcsize) {
     len = srcsize - off - 1;

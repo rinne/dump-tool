@@ -20,6 +20,8 @@
 #include <getopt.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/ioctl.h>
+#include <linux/fs.h>
 
 #include "common.h"
 
@@ -84,12 +86,19 @@ int main(int argc, char **argv) {
 
   /* Input type check */
   if (S_ISREG(st.st_mode)) {
+    srcsize = st.st_size;
     dprintf(1, "Input is a regular file.\n");
     fsync(1);
   } else if (S_ISCHR(st.st_mode)) {
+    srcsize = st.st_size;
     dprintf(1, "Input is a character device.\n");
     fsync(1);
   } else if (S_ISBLK(st.st_mode)) {
+    if (((fd = open(fn, O_RDONLY | O_NOFOLLOW, 0)) < 0) || (ioctl(fd, BLKGETSIZE64, &srcsize) != 0) || (close(fd) != 0)) {
+      dprintf(2, "Can't get size of the block device \"%s\"\n", fn);
+      fsync(2);
+      exit(1);
+    }
     dprintf(1, "Input is a block device.\n");
     fsync(1);
   } else {
@@ -99,7 +108,6 @@ int main(int argc, char **argv) {
   }
 
   /* Size calculation */
-  srcsize = st.st_size;
   dprintf(1, "Source size is %lu bytes.\n", (unsigned long)srcsize);
   fsync(1);
   if (srcsize < 1) {
