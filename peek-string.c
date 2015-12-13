@@ -77,13 +77,12 @@ int main(int argc, char **argv) {
   }
   argc -= optind;
   argv += optind;
-  if (argc == 1) {
-    fn = argv[0];
-  } else {
+  if ((argc != 1) || (off == DUMP_INVALID_OFFSET)) {
     dprintf(2, "Usage: %s -o <offset> [ -l <maximum len> ] <source device or file>\n", av0);
     fsync(2);
     exit(1);
   }
+  fn = argv[0];
   if (lstat(fn, &st) != 0) {
     dprintf(2, "Can't stat source \"%s\"\n", fn);
     fsync(2);
